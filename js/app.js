@@ -60,7 +60,11 @@ const App = {
 
         const apiKey = document.getElementById('apiKey').value.trim();
         if (!apiKey) {
-            UI.addAgentMessage('<p style="color:var(--warning)">请先配置 API Key。点击左上角菜单按钮，在设置中输入你的 DashScope API Key。</p>');
+            // 首次使用，弹出配置面板
+            document.getElementById('sidebar').classList.add('open');
+            UI.addAgentMessage(`<p>你好！首次使用需要配置 API Key。</p>
+                <p>请点击右上角的 <strong>齿轮图标</strong> ⚙️，在设置中输入你的 DashScope API Key。</p>
+                <p class="hint-text">获取地址：<a href="https://dashscope.console.aliyun.com/" target="_blank" style="color:var(--info)">dashscope.console.aliyun.com</a>（新用户有免费额度）</p>`);
             return;
         }
 

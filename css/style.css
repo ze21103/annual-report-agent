@@ -42,6 +42,20 @@ body {
     transition: transform 0.3s;
 }
 
+@media (min-width: 769px) {
+    .sidebar {
+        transform: translateX(-100%);
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 100;
+    }
+    .sidebar.open {
+        transform: translateX(0);
+    }
+}
+
 .sidebar-header {
     display: flex;
     align-items: center;
@@ -114,22 +128,40 @@ body {
 .chat-topbar {
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: space-between;
     padding: 12px 20px;
     border-bottom: 1px solid var(--border);
     background: var(--bg-chat);
 }
 
+.topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.topbar-logo {
+    font-size: 22px;
+}
+
 .chat-topbar h1 {
     font-size: 16px;
     font-weight: 600;
-    flex: 1;
 }
 
 .topbar-right {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+#openSidebar {
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+#openSidebar:hover {
+    opacity: 1;
 }
 
 .model-badge {
