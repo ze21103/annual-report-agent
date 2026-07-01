@@ -1,271 +1,314 @@
 /**
- * UI交互模块
+ * UI交互模块 - 对话式界面
  */
 const UI = {
-    /**
-     * 初始化所有UI事件
-     */
     init() {
-        this._initTabs();
-        this._initResultTabs();
-        this._initUpload();
+        this._initSidebar();
+        this._initInput();
+        this._initFileUpload();
     },
 
-    /**
-     * Tab切换
-     */
-    _initTabs() {
-        document.querySelectorAll('.tab-bar .tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                const parent = tab.closest('.panel') || tab.closest('section');
-                parent.querySelectorAll('.tab-bar .tab').forEach(t => t.classList.remove('active'));
-                parent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                tab.classList.add('active');
-                const target = parent.querySelector(`#tab-${tab.dataset.tab}`);
-                if (target) target.classList.add('active');
-            });
+    _initSidebar() {
+        document.getElementById('openSidebar').addEventListener('click', () => {
+            document.getElementById('sidebar').classList.add('open');
+        });
+        document.getElementById('closeSidebar').addEventListener('click', () => {
+            document.getElementById('sidebar').classList.remove('open');
+        });
+        document.getElementById('modelSelect').addEventListener('change', (e) => {
+            document.getElementById('modelBadge').textContent = e.target.value;
         });
     },
 
-    /**
-     * 结果Tab切换
-     */
-    _initResultTabs() {
-        document.querySelectorAll('.result-tabs .tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                document.querySelectorAll('.result-tabs .tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.result-content').forEach(c => c.classList.remove('active'));
-                tab.classList.add('active');
-                const target = document.querySelector(`#result-${tab.dataset.result}`);
-                if (target) target.classList.add('active');
-            });
+    _initInput() {
+        const textarea = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        textarea.addEventListener('input', () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+            sendBtn.disabled = !textarea.value.trim() && !this.selectedFile;
+        });
+
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!sendBtn.disabled) sendBtn.click();
+            }
+        });
+
+        sendBtn.addEventListener('click', () => {
+            if (App.onSend) App.onSend();
         });
     },
 
-    /**
-     * 文件上传
-     */
-    _initUpload() {
-        const dropZone = document.getElementById('dropZone');
+    _initFileUpload() {
+        const attachBtn = document.getElementById('attachBtn');
         const fileInput = document.getElementById('fileInput');
-        const selectFileBtn = document.getElementById('selectFileBtn');
 
-        selectFileBtn.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('click', (e) => {
-            if (e.target === dropZone || e.target.classList.contains('upload-icon') || e.target.tagName === 'P') {
-                fileInput.click();
-            }
-        });
-
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('dragover');
-        });
-
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('dragover');
-        });
-
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('dragover');
-            const file = e.dataTransfer.files[0];
-            if (file && file.type === 'application/pdf') {
-                this._setFile(file);
-            }
-        });
+        attachBtn.addEventListener('click', () => fileInput.click());
 
         fileInput.addEventListener('change', () => {
             if (fileInput.files[0]) {
-                this._setFile(fileInput.files[0]);
+                this.setFile(fileInput.files[0]);
             }
         });
 
-        document.getElementById('removeFileBtn').addEventListener('click', () => {
-            this._clearFile();
+        document.getElementById('removeUpload').addEventListener('click', () => {
+            this.clearFile();
         });
     },
 
-    _setFile(file) {
+    setFile(file) {
         this.selectedFile = file;
-        document.getElementById('fileInfo').style.display = 'flex';
-        document.getElementById('fileName').textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-        document.getElementById('startBtn').disabled = false;
+        document.getElementById('uploadPreview').style.display = 'flex';
+        document.getElementById('uploadFileName').textContent = `📎 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        document.getElementById('sendBtn').disabled = false;
     },
 
-    _clearFile() {
+    clearFile() {
         this.selectedFile = null;
-        document.getElementById('fileInfo').style.display = 'none';
-        document.getElementById('fileName').textContent = '';
+        document.getElementById('uploadPreview').style.display = 'none';
         document.getElementById('fileInput').value = '';
-        this._updateStartBtn();
+        this._updateSendBtn();
     },
 
-    _updateStartBtn() {
+    _updateSendBtn() {
+        const hasText = document.getElementById('chatInput').value.trim().length > 0;
         const hasFile = !!this.selectedFile;
-        const hasText = document.getElementById('textInput').value.trim().length > 0;
-        const hasApiKey = document.getElementById('apiKey').value.trim().length > 0;
-        document.getElementById('startBtn').disabled = !(hasFile || hasText) || !hasApiKey;
+        document.getElementById('sendBtn').disabled = !(hasText || hasFile);
     },
 
-    /**
-     * 更新工作流步骤状态
-     */
-    setStepStatus(step, status, message) {
-        const el = document.querySelector(`.step[data-step="${step}"]`);
-        if (!el) return;
-
-        el.classList.remove('active', 'done', 'error');
-        el.classList.add(status);
-
-        const statusEl = el.querySelector('.step-status');
-        const messages = {
-            active: '处理中...',
-            done: '✓ 完成',
-            error: '✗ 失败'
-        };
-        statusEl.textContent = message || messages[status] || status;
+    getInputText() {
+        return document.getElementById('chatInput').value.trim();
     },
 
-    /**
-     * 追加LLM流式输出
-     */
-    appendStream(text) {
-        const output = document.getElementById('llmStreamOutput');
-        output.textContent += text;
-        output.scrollTop = output.scrollHeight;
+    clearInput() {
+        document.getElementById('chatInput').value = '';
+        document.getElementById('chatInput').style.height = 'auto';
+        this.clearFile();
     },
 
-    /**
-     * 清空LLM输出
-     */
-    clearStream() {
-        document.getElementById('llmStreamOutput').textContent = '';
+    // ========== 消息渲染 ==========
+
+    addUserMessage(text) {
+        const container = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.className = 'message user-message';
+        div.innerHTML = `
+            <div class="message-avatar">U</div>
+            <div class="message-content"><p>${this._escapeHtml(text)}</p></div>
+        `;
+        container.appendChild(div);
+        this.scrollToBottom();
     },
 
-    /**
-     * 显示/隐藏面板
-     */
-    showPanel(id) {
-        document.getElementById(id).style.display = 'block';
+    addAgentMessage(html) {
+        const container = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.className = 'message agent-message';
+        div.innerHTML = `
+            <div class="message-avatar">AI</div>
+            <div class="message-content">${html}</div>
+        `;
+        container.appendChild(div);
+        this.scrollToBottom();
+        return div;
     },
 
-    hidePanel(id) {
-        document.getElementById(id).style.display = 'none';
+    addTypingIndicator() {
+        return this.addAgentMessage(`
+            <div class="typing-dots">
+                <span></span><span></span><span></span>
+            </div>
+        `);
     },
 
-    /**
-     * 渲染总览
-     */
-    renderOverview(overview) {
-        document.getElementById('overviewCompany').textContent = overview.company;
-        document.getElementById('overviewYear').textContent = overview.year;
-        document.getElementById('overviewTotalAssets').textContent = Workflow.formatNumber(overview.totalAssets);
-        document.getElementById('overviewTotalLiabilities').textContent = Workflow.formatNumber(overview.totalLiabilities);
-        document.getElementById('overviewNetAssets').textContent = Workflow.formatNumber(overview.totalEquity);
-        document.getElementById('overviewMgmtChanges').textContent = overview.mgmtChangeCount + ' 人';
+    removeTypingIndicator(el) {
+        if (el && el.parentNode) el.parentNode.removeChild(el);
     },
 
-    /**
-     * 渲染资产负债表
-     */
-    renderBalanceSheet(rows) {
-        const tbody = document.querySelector('#balanceTable tbody');
-        tbody.innerHTML = '';
+    // ========== 工作流卡片 ==========
 
-        for (const row of rows) {
-            const tr = document.createElement('tr');
-
-            if (row.isSection) {
-                tr.innerHTML = `<td colspan="3" style="font-weight:700;color:var(--info);background:var(--bg-input)">${row.label}</td>`;
-            } else if (row.isTotal) {
-                tr.innerHTML = `
-                    <td style="font-weight:700">${row.label || row.item}</td>
-                    <td style="font-weight:700">${Workflow.formatNumber(row.ending_balance ?? row.ending)}</td>
-                    <td style="font-weight:700">${Workflow.formatNumber(row.beginning_balance ?? row.beginning)}</td>`;
-            } else {
-                tr.innerHTML = `
-                    <td>${row.item}</td>
-                    <td>${Workflow.formatNumber(row.ending)}</td>
-                    <td>${Workflow.formatNumber(row.beginning)}</td>`;
-            }
-
-            tbody.appendChild(tr);
-        }
-    },
-
-    /**
-     * 渲染管理层变动
-     */
-    renderManagement(changes) {
-        const tbody = document.querySelector('#managementTable tbody');
-        tbody.innerHTML = '';
-
-        if (!Array.isArray(changes) || changes.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-dim)">未发现管理层变动信息</td></tr>';
-            return;
-        }
-
-        for (const c of changes) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${c.name || '-'}</td>
-                <td>${c.position || '-'}</td>
-                <td><span class="badge">${c.change_type || '-'}</span></td>
-                <td>${c.description || '-'}</td>`;
-            tbody.appendChild(tr);
-        }
-    },
-
-    /**
-     * 渲染附注信息
-     */
-    renderNotes(notes) {
-        const container = document.getElementById('notesContent');
-        let html = '';
-
-        if (notes.important_notes && Array.isArray(notes.important_notes)) {
-            for (const note of notes.important_notes) {
-                const impactColor = { high: 'var(--danger)', medium: 'var(--warning)', low: 'var(--success)' };
-                html += `
-                    <div style="margin-bottom:16px;padding:12px;background:var(--bg-input);border-radius:8px;border-left:3px solid ${impactColor[note.impact] || 'var(--border)'}">
-                        <div style="font-weight:600;margin-bottom:4px">${note.category} - ${note.title}</div>
-                        <div style="color:var(--text-dim);font-size:14px">${note.content}</div>
-                    </div>`;
-            }
-        }
-
-        const sections = [
-            { key: 'related_parties', label: '关联交易' },
-            { key: 'contingent_liabilities', label: '或有事项' },
-            { key: 'subsequent_events', label: '日后事项' }
+    createWorkflowCard() {
+        const steps = [
+            { id: 'preprocess', label: '文档预处理' },
+            { id: 'balance', label: '资产负债表提取' },
+            { id: 'management', label: '管理层变动提取' },
+            { id: 'notes', label: '附注信息提取' }
         ];
 
-        for (const s of sections) {
-            const data = notes[s.key];
-            if (data) {
-                html += `<h3>${s.label}</h3><p>${data.summary || '无'}</p>`;
+        let stepsHtml = steps.map(s => `
+            <div class="step-mini" data-step="${s.id}">
+                <div class="step-mini-dot"></div>
+                <div class="step-mini-label">${s.label}</div>
+            </div>
+        `).join('');
+
+        const html = `
+            <div class="workflow-card">
+                <div class="workflow-card-header">
+                    <span>工作流执行</span>
+                    <span class="workflow-status">准备中...</span>
+                </div>
+                <div class="workflow-steps-mini">${stepsHtml}</div>
+                <div class="stream-output" id="streamOutput"></div>
+            </div>
+        `;
+
+        return this.addAgentMessage(html);
+    },
+
+    updateWorkflowStep(msgEl, stepId, status) {
+        if (!msgEl) return;
+        const step = msgEl.querySelector(`.step-mini[data-step="${stepId}"]`);
+        if (!step) return;
+
+        step.classList.remove('active', 'done', 'error');
+        step.classList.add(status);
+    },
+
+    updateWorkflowStatus(msgEl, text) {
+        if (!msgEl) return;
+        const status = msgEl.querySelector('.workflow-status');
+        if (status) status.textContent = text;
+    },
+
+    appendStream(msgEl, text) {
+        if (!msgEl) return;
+        const output = msgEl.querySelector('.stream-output');
+        if (output) {
+            output.textContent += text;
+            output.scrollTop = output.scrollHeight;
+        }
+    },
+
+    // ========== 结果卡片 ==========
+
+    createResultCard(result) {
+        const overview = Workflow.getOverview(result);
+        const balanceRows = Workflow.getBalanceSheetRows(result);
+        const mgmt = result.management_changes || [];
+        const notes = result.notes || {};
+
+        let balanceBody = '';
+        for (const row of balanceRows) {
+            if (row.isSection) {
+                balanceBody += `<tr><td colspan="3" style="font-weight:700;color:var(--info);background:var(--bg)">${row.label}</td></tr>`;
+            } else if (row.isTotal) {
+                balanceBody += `<tr style="font-weight:700"><td>${row.label || row.item}</td><td>${Workflow.formatNumber(row.ending_balance ?? row.ending)}</td><td>${Workflow.formatNumber(row.beginning_balance ?? row.beginning)}</td></tr>`;
+            } else {
+                balanceBody += `<tr><td>${row.item}</td><td>${Workflow.formatNumber(row.ending)}</td><td>${Workflow.formatNumber(row.beginning)}</td></tr>`;
             }
         }
 
-        if (!html) {
-            html = '<p style="color:var(--text-dim)">未提取到附注信息</p>';
+        let mgmtBody = '';
+        if (Array.isArray(mgmt) && mgmt.length > 0) {
+            mgmtBody = mgmt.map(m => `
+                <tr><td>${m.name || '-'}</td><td>${m.position || '-'}</td><td>${m.change_type || '-'}</td><td>${m.description || '-'}</td></tr>
+            `).join('');
+        } else {
+            mgmtBody = '<tr><td colspan="4" style="text-align:center;color:var(--text-dim)">未发现管理层变动</td></tr>';
         }
 
-        container.innerHTML = html;
+        let notesHtml = '';
+        if (notes.important_notes && Array.isArray(notes.important_notes)) {
+            notesHtml = notes.important_notes.map(n => `
+                <div class="note-item ${n.impact || 'low'}">
+                    <div class="note-item-title">${n.category || ''} - ${n.title || ''}</div>
+                    <div class="note-item-content">${n.content || ''}</div>
+                </div>
+            `).join('');
+        }
+        if (!notesHtml) notesHtml = '<p style="color:var(--text-dim)">未提取到附注信息</p>';
+
+        const html = `
+            <div class="result-card">
+                <div class="result-card-header">
+                    <span>提取结果</span>
+                    <div class="json-actions">
+                        <button class="btn btn-sm btn-outline" onclick="App.copyJSON()">复制JSON</button>
+                        <button class="btn btn-sm btn-outline" onclick="App.downloadJSON()">下载JSON</button>
+                        <button class="btn btn-sm btn-outline" onclick="App.downloadCSV()">下载CSV</button>
+                    </div>
+                </div>
+                <div class="result-tabs-mini">
+                    <button class="result-tab-mini active" onclick="UI.switchResultTab(this, 'overview')">总览</button>
+                    <button class="result-tab-mini" onclick="UI.switchResultTab(this, 'balance')">资产负债表</button>
+                    <button class="result-tab-mini" onclick="UI.switchResultTab(this, 'management')">管理层变动</button>
+                    <button class="result-tab-mini" onclick="UI.switchResultTab(this, 'notes')">附注</button>
+                    <button class="result-tab-mini" onclick="UI.switchResultTab(this, 'json')">JSON</button>
+                </div>
+                <div class="result-panel-content">
+                    <div class="result-tab-content active" data-tab="overview">
+                        <div class="overview-grid">
+                            <div class="overview-item">
+                                <div class="overview-item-label">公司名称</div>
+                                <div class="overview-item-value">${overview.company}</div>
+                            </div>
+                            <div class="overview-item">
+                                <div class="overview-item-label">报告年份</div>
+                                <div class="overview-item-value">${overview.year}</div>
+                            </div>
+                            <div class="overview-item">
+                                <div class="overview-item-label">总资产</div>
+                                <div class="overview-item-value">${Workflow.formatNumber(overview.totalAssets)}</div>
+                            </div>
+                            <div class="overview-item">
+                                <div class="overview-item-label">总负债</div>
+                                <div class="overview-item-value">${Workflow.formatNumber(overview.totalLiabilities)}</div>
+                            </div>
+                            <div class="overview-item">
+                                <div class="overview-item-label">净资产</div>
+                                <div class="overview-item-value">${Workflow.formatNumber(overview.totalEquity)}</div>
+                            </div>
+                            <div class="overview-item">
+                                <div class="overview-item-label">管理层变动</div>
+                                <div class="overview-item-value">${overview.mgmtChangeCount} 人</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="result-tab-content" data-tab="balance" style="display:none">
+                        <table class="result-table">
+                            <thead><tr><th>科目</th><th>期末余额</th><th>期初余额</th></tr></thead>
+                            <tbody>${balanceBody}</tbody>
+                        </table>
+                    </div>
+                    <div class="result-tab-content" data-tab="management" style="display:none">
+                        <table class="result-table">
+                            <thead><tr><th>姓名</th><th>职位</th><th>变动类型</th><th>说明</th></tr></thead>
+                            <tbody>${mgmtBody}</tbody>
+                        </table>
+                    </div>
+                    <div class="result-tab-content" data-tab="notes" style="display:none">
+                        ${notesHtml}
+                    </div>
+                    <div class="result-tab-content" data-tab="json" style="display:none">
+                        <pre class="json-output" id="jsonOutputInline">${JSON.stringify(result, null, 2)}</pre>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        return this.addAgentMessage(html);
     },
 
-    /**
-     * 渲染JSON
-     */
-    renderJSON(result) {
-        document.getElementById('jsonOutput').textContent = JSON.stringify(result, null, 2);
+    switchResultTab(btn, tabName) {
+        const card = btn.closest('.result-card');
+        card.querySelectorAll('.result-tab-mini').forEach(t => t.classList.remove('active'));
+        card.querySelectorAll('.result-tab-content').forEach(c => c.style.display = 'none');
+        btn.classList.add('active');
+        card.querySelector(`.result-tab-content[data-tab="${tabName}"]`).style.display = 'block';
     },
 
-    /**
-     * 格式化数值显示
-     */
-    formatDisplay(val) {
-        return Workflow.formatNumber(val);
+    scrollToBottom() {
+        const container = document.getElementById('chatMessages');
+        container.scrollTop = container.scrollHeight;
+    },
+
+    _escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 };

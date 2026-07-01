@@ -8,204 +8,91 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="logo">
-                <span class="logo-icon">📊</span>
-                <h1>企业年报智能提取 Agent</h1>
+    <!-- 侧边栏 -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>年报提取 Agent</h2>
+            <button class="btn-icon-only" id="closeSidebar">&times;</button>
+        </div>
+        <div class="sidebar-content">
+            <div class="setting-group">
+                <label>API Key</label>
+                <input type="password" id="apiKey" placeholder="sk-..." />
+                <small>阿里云 DashScope API Key</small>
             </div>
-            <p class="subtitle">基于 Qwen 大模型的多步骤智能体工作流</p>
-        </header>
+            <div class="setting-group">
+                <label>模型</label>
+                <select id="modelSelect">
+                    <option value="qwen-plus" selected>qwen-plus</option>
+                    <option value="qwen-turbo">qwen-turbo</option>
+                    <option value="qwen-max">qwen-max</option>
+                </select>
+            </div>
+            <hr>
+            <button class="btn btn-outline btn-block" id="newChatBtn">+ 新对话</button>
+            <button class="btn btn-outline btn-block" id="loadSample1Btn">示例：万科年报</button>
+            <button class="btn btn-outline btn-block" id="loadSample2Btn">示例：腾讯年报</button>
+        </div>
+    </aside>
 
-        <!-- 配置面板 -->
-        <section class="panel config-panel">
-            <h2>⚙️ 配置</h2>
-            <div class="config-row">
-                <div class="input-group">
-                    <label for="apiKey">DashScope API Key</label>
-                    <input type="password" id="apiKey" placeholder="sk-..." />
-                    <small>从阿里云 DashScope 控制台获取</small>
-                </div>
-                <div class="input-group">
-                    <label for="modelSelect">模型选择</label>
-                    <select id="modelSelect">
-                        <option value="qwen-plus" selected>qwen-plus (推荐)</option>
-                        <option value="qwen-turbo">qwen-turbo (快速)</option>
-                        <option value="qwen-max">qwen-max (精准)</option>
-                    </select>
-                </div>
+    <!-- 主聊天区域 -->
+    <main class="chat-main">
+        <!-- 顶部栏 -->
+        <div class="chat-topbar">
+            <button class="btn-icon-only" id="openSidebar">&#9776;</button>
+            <h1>企业年报智能提取 Agent</h1>
+            <div class="topbar-right">
+                <span class="model-badge" id="modelBadge">qwen-plus</span>
             </div>
-        </section>
+        </div>
 
-        <!-- 输入面板 -->
-        <section class="panel input-panel">
-            <h2>📄 输入</h2>
-            <div class="tab-bar">
-                <button class="tab active" data-tab="upload">上传 PDF</button>
-                <button class="tab" data-tab="paste">粘贴文本</button>
-                <button class="tab" data-tab="sample">示例数据</button>
-            </div>
-            <div class="tab-content active" id="tab-upload">
-                <div class="upload-area" id="dropZone">
-                    <div class="upload-icon">📁</div>
-                    <p>拖拽 PDF 文件到此处，或点击选择</p>
-                    <input type="file" id="fileInput" accept=".pdf" hidden />
-                    <button class="btn btn-outline" id="selectFileBtn">选择文件</button>
-                </div>
-                <div class="file-info" id="fileInfo" style="display:none">
-                    <span id="fileName"></span>
-                    <button class="btn btn-sm btn-danger" id="removeFileBtn">移除</button>
-                </div>
-            </div>
-            <div class="tab-content" id="tab-paste">
-                <textarea id="textInput" rows="10" placeholder="粘贴年报文本内容..."></textarea>
-            </div>
-            <div class="tab-content" id="tab-sample">
-                <p class="hint">选择一个示例年报数据进行测试：</p>
-                <div class="sample-list">
-                    <button class="btn btn-outline sample-btn" data-sample="1">示例：某上市公司年报摘要</button>
-                    <button class="btn btn-outline sample-btn" data-sample="2">示例：某科技公司年报摘要</button>
+        <!-- 消息区域 -->
+        <div class="chat-messages" id="chatMessages">
+            <!-- 欢迎消息 -->
+            <div class="message agent-message">
+                <div class="message-avatar">AI</div>
+                <div class="message-content">
+                    <p>你好！我是<strong>企业年报智能提取 Agent</strong>。</p>
+                    <p>我可以帮你从企业年报中提取结构化数据，包括：</p>
+                    <ul>
+                        <li>资产负债表数据</li>
+                        <li>管理层变动信息</li>
+                        <li>附注重要事项</li>
+                    </ul>
+                    <p>你可以：</p>
+                    <div class="action-chips">
+                        <button class="chip" onclick="App.quickAction('sample1')">试用示例：万科年报</button>
+                        <button class="chip" onclick="App.quickAction('sample2')">试用示例：腾讯年报</button>
+                        <button class="chip" onclick="App.quickAction('upload')">上传PDF文件</button>
+                        <button class="chip" onclick="App.quickAction('paste')">粘贴年报文本</button>
+                    </div>
+                    <p class="hint-text">首次使用请在左上角菜单中配置 API Key</p>
                 </div>
             </div>
-            <div class="action-bar">
-                <button class="btn btn-primary btn-lg" id="startBtn" disabled>
-                    <span class="btn-icon">🚀</span> 开始提取
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="chat-input-area">
+            <div class="upload-preview" id="uploadPreview" style="display:none">
+                <span id="uploadFileName"></span>
+                <button class="btn-icon-only" id="removeUpload">&times;</button>
+            </div>
+            <div class="input-row">
+                <button class="btn-icon-only attach-btn" id="attachBtn" title="上传PDF">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                    </svg>
                 </button>
-                <button class="btn btn-danger btn-lg" id="stopBtn" style="display:none">
-                    <span class="btn-icon">⏹</span> 停止
+                <input type="file" id="fileInput" accept=".pdf" hidden />
+                <textarea id="chatInput" placeholder="输入消息，或粘贴年报文本..." rows="1"></textarea>
+                <button class="btn-send" id="sendBtn" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
                 </button>
             </div>
-        </section>
-
-        <!-- 工作流状态面板 -->
-        <section class="panel workflow-panel" id="workflowPanel" style="display:none">
-            <h2>🔄 工作流状态</h2>
-            <div class="workflow-steps">
-                <div class="step" data-step="preprocess">
-                    <div class="step-icon">1</div>
-                    <div class="step-info">
-                        <div class="step-title">文档预处理</div>
-                        <div class="step-desc">识别公司、年份、文档结构</div>
-                    </div>
-                    <div class="step-status">等待中</div>
-                </div>
-                <div class="step-connector"></div>
-                <div class="step" data-step="balance">
-                    <div class="step-icon">2</div>
-                    <div class="step-info">
-                        <div class="step-title">资产负债表提取</div>
-                        <div class="step-desc">提取科目、金额、结构化数据</div>
-                    </div>
-                    <div class="step-status">等待中</div>
-                </div>
-                <div class="step-connector"></div>
-                <div class="step" data-step="management">
-                    <div class="step-icon">3</div>
-                    <div class="step-info">
-                        <div class="step-title">管理层变动提取</div>
-                        <div class="step-desc">识别高管姓名、职位、变动类型</div>
-                    </div>
-                    <div class="step-status">等待中</div>
-                </div>
-                <div class="step-connector"></div>
-                <div class="step" data-step="notes">
-                    <div class="step-icon">4</div>
-                    <div class="step-info">
-                        <div class="step-title">附注信息提取</div>
-                        <div class="step-desc">重大事项、关联交易、或有事项</div>
-                    </div>
-                    <div class="step-status">等待中</div>
-                </div>
-            </div>
-            <div class="llm-output" id="llmOutput">
-                <div class="output-header">
-                    <span>LLM 实时输出</span>
-                    <button class="btn btn-sm btn-outline" id="clearOutputBtn">清空</button>
-                </div>
-                <pre id="llmStreamOutput"></pre>
-            </div>
-        </section>
-
-        <!-- 结果面板 -->
-        <section class="panel result-panel" id="resultPanel" style="display:none">
-            <h2>📋 提取结果</h2>
-            <div class="result-tabs">
-                <button class="tab active" data-result="overview">总览</button>
-                <button class="tab" data-result="balance">资产负债表</button>
-                <button class="tab" data-result="management">管理层变动</button>
-                <button class="tab" data-result="notes">附注信息</button>
-                <button class="tab" data-result="json">JSON导出</button>
-            </div>
-
-            <div class="result-content active" id="result-overview">
-                <div class="overview-cards">
-                    <div class="card">
-                        <div class="card-label">公司名称</div>
-                        <div class="card-value" id="overviewCompany">-</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-label">报告年份</div>
-                        <div class="card-value" id="overviewYear">-</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-label">总资产</div>
-                        <div class="card-value" id="overviewTotalAssets">-</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-label">总负债</div>
-                        <div class="card-value" id="overviewTotalLiabilities">-</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-label">净资产</div>
-                        <div class="card-value" id="overviewNetAssets">-</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-label">管理层变动</div>
-                        <div class="card-value" id="overviewMgmtChanges">-</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="result-content" id="result-balance">
-                <div class="table-container">
-                    <table id="balanceTable">
-                        <thead>
-                            <tr><th>科目</th><th>期末余额</th><th>期初余额</th></tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="result-content" id="result-management">
-                <div class="table-container">
-                    <table id="managementTable">
-                        <thead>
-                            <tr><th>姓名</th><th>职位</th><th>变动类型</th><th>说明</th></tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="result-content" id="result-notes">
-                <div id="notesContent" class="notes-content"></div>
-            </div>
-
-            <div class="result-content" id="result-json">
-                <div class="json-actions">
-                    <button class="btn btn-outline" id="copyJsonBtn">复制JSON</button>
-                    <button class="btn btn-outline" id="downloadJsonBtn">下载JSON</button>
-                    <button class="btn btn-outline" id="downloadCsvBtn">下载CSV</button>
-                </div>
-                <pre id="jsonOutput"></pre>
-            </div>
-        </section>
-
-        <footer>
-            <p>AI4S课程大作业 | 基于 Qwen 大模型的企业年报智能提取 Agent</p>
-        </footer>
-    </div>
+        </div>
+    </main>
 
     <script src="js/pdf-parser.js"></script>
     <script src="js/llm-client.js"></script>

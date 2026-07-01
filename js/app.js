@@ -1,225 +1,267 @@
 /**
- * 主应用逻辑 - 整合所有模块
+ * 主应用逻辑 - 对话式智能体
  */
 const App = {
+    lastResult: null,
+    isProcessing: false,
+
     init() {
         UI.init();
-        this._bindEvents();
         this._loadSavedApiKey();
-    },
-
-    _bindEvents() {
-        // API Key输入监听
-        document.getElementById('apiKey').addEventListener('input', () => {
-            UI._updateStartBtn();
-            localStorage.setItem('dashscope_api_key', document.getElementById('apiKey').value);
-        });
-
-        // 文本输入监听
-        document.getElementById('textInput').addEventListener('input', () => {
-            UI._updateStartBtn();
-        });
-
-        // 开始按钮
-        document.getElementById('startBtn').addEventListener('click', () => this.start());
-
-        // 停止按钮
-        document.getElementById('stopBtn').addEventListener('click', () => this.stop());
-
-        // 示例数据按钮
-        document.querySelectorAll('.sample-btn').forEach(btn => {
-            btn.addEventListener('click', () => this.loadSample(btn.dataset.sample));
-        });
-
-        // JSON操作按钮
-        document.getElementById('copyJsonBtn').addEventListener('click', () => this.copyJSON());
-        document.getElementById('downloadJsonBtn').addEventListener('click', () => this.downloadJSON());
-        document.getElementById('downloadCsvBtn').addEventListener('click', () => this.downloadCSV());
-
-        // 清空输出
-        document.getElementById('clearOutputBtn').addEventListener('click', () => UI.clearStream());
+        this._bindSettingsEvents();
+        this.onSend = () => this.handleSend();
     },
 
     _loadSavedApiKey() {
         const saved = localStorage.getItem('dashscope_api_key');
-        if (saved) {
-            document.getElementById('apiKey').value = saved;
+        if (saved) document.getElementById('apiKey').value = saved;
+    },
+
+    _bindSettingsEvents() {
+        document.getElementById('apiKey').addEventListener('input', (e) => {
+            localStorage.setItem('dashscope_api_key', e.target.value);
+        });
+
+        document.getElementById('newChatBtn').addEventListener('click', () => {
+            location.reload();
+        });
+
+        document.getElementById('loadSample1Btn').addEventListener('click', () => {
+            this.quickAction('sample1');
+            document.getElementById('sidebar').classList.remove('open');
+        });
+
+        document.getElementById('loadSample2Btn').addEventListener('click', () => {
+            this.quickAction('sample2');
+            document.getElementById('sidebar').classList.remove('open');
+        });
+    },
+
+    quickAction(action) {
+        switch (action) {
+            case 'sample1':
+                this._processText(SampleData['1'], '示例：万科企业2023年年报');
+                break;
+            case 'sample2':
+                this._processText(SampleData['2'], '示例：腾讯控股2023年年报');
+                break;
+            case 'upload':
+                document.getElementById('fileInput').click();
+                break;
+            case 'paste':
+                document.getElementById('chatInput').focus();
+                document.getElementById('chatInput').placeholder = '请粘贴年报文本内容...';
+                break;
         }
     },
 
-    /**
-     * 获取输入文本
-     */
-    async _getInputText() {
-        // 优先使用上传的文件
-        if (UI.selectedFile) {
-            const result = await PDFParser.extractText(UI.selectedFile, (current, total) => {
-                UI.appendStream(`[PDF解析] 第 ${current}/${total} 页...\n`);
-            });
-            return result.text;
-        }
+    async handleSend() {
+        if (this.isProcessing) return;
 
-        // 使用粘贴的文本
-        const text = document.getElementById('textInput').value.trim();
-        if (text) return text;
-
-        throw new Error('请先上传PDF文件或粘贴文本');
-    },
-
-    /**
-     * 开始提取
-     */
-    async start() {
         const apiKey = document.getElementById('apiKey').value.trim();
         if (!apiKey) {
-            alert('请输入DashScope API Key');
+            UI.addAgentMessage('<p style="color:var(--warning)">请先配置 API Key。点击左上角菜单按钮，在设置中输入你的 DashScope API Key。</p>');
             return;
         }
 
-        const model = document.getElementById('modelSelect').value;
+        // 获取输入
+        let text = '';
+        let userDisplay = '';
 
-        // 切换UI状态
-        document.getElementById('startBtn').style.display = 'none';
-        document.getElementById('stopBtn').style.display = 'inline-flex';
-        UI.showPanel('workflowPanel');
-        UI.hidePanel('resultPanel');
-        UI.clearStream();
+        if (UI.selectedFile) {
+            userDisplay = `📎 上传文件：${UI.selectedFile.name}`;
+            try {
+                UI.addUserMessage(userDisplay);
+                UI.clearInput();
+                const typing = UI.addTypingIndicator();
+                const result = await PDFParser.extractText(UI.selectedFile);
+                UI.removeTypingIndicator(typing);
+                text = result.text;
+                UI.addAgentMessage(`<p>已解析PDF，共 ${result.totalPages} 页，${text.length} 字符。正在开始提取...</p>`);
+            } catch (err) {
+                UI.addAgentMessage(`<p style="color:var(--danger)">PDF解析失败：${err.message}</p>`);
+                return;
+            }
+        } else {
+            text = UI.getInputText();
+            if (!text) return;
 
-        // 重置步骤状态
-        ['preprocess', 'balance', 'management', 'notes'].forEach(step => {
-            UI.setStepStatus(step, '', '等待中');
-        });
+            // 判断是直接的年报文本还是简短指令
+            if (text.length < 100) {
+                // 短文本，当作指令处理
+                UI.addUserMessage(text);
+                UI.clearInput();
+                this._handleShortCommand(text, apiKey);
+                return;
+            }
+
+            userDisplay = text.length > 200 ? text.substring(0, 200) + '...' : text;
+            UI.addUserMessage(userDisplay);
+            UI.clearInput();
+        }
+
+        this._processText(text, null, apiKey);
+    },
+
+    async _handleShortCommand(command, apiKey) {
+        const typing = UI.addTypingIndicator();
+
+        // 用LLM理解用户意图
+        const intentPrompt = `用户说："${command}"
+请判断用户意图，返回以下JSON之一：
+{"intent": "extract", "detail": "用户想要提取年报数据"}
+{"intent": "help", "detail": "用户需要帮助"}
+{"intent": "sample", "detail": "用户想看示例"}
+{"intent": "unknown", "detail": "无法理解"}
+
+只返回JSON，不要其他内容。`;
 
         try {
-            // 获取输入文本
-            UI.appendStream('[系统] 正在读取输入...\n');
-            const text = await this._getInputText();
-            UI.appendStream(`[系统] 输入文本共 ${text.length} 字符\n\n`);
+            const response = await LLMClient.chatSync({
+                apiKey,
+                model: document.getElementById('modelSelect').value,
+                messages: [{ role: 'user', content: intentPrompt }]
+            });
 
-            // 执行工作流
+            UI.removeTypingIndicator(typing);
+
+            let intent = 'unknown';
+            try {
+                const parsed = JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}');
+                intent = parsed.intent || 'unknown';
+            } catch (e) {}
+
+            switch (intent) {
+                case 'sample':
+                    UI.addAgentMessage('<p>好的，让我为你加载一份示例年报数据进行提取演示。</p>');
+                    this._processText(SampleData['1'], '示例：万科企业2023年年报', apiKey);
+                    break;
+                case 'help':
+                    UI.addAgentMessage(`
+                        <p>我是企业年报智能提取Agent，可以帮你：</p>
+                        <ul>
+                            <li>上传PDF年报文件，自动提取结构化数据</li>
+                            <li>粘贴年报文本，提取资产负债表、管理层变动、附注信息</li>
+                        </ul>
+                        <p>使用方法：</p>
+                        <div class="action-chips">
+                            <button class="chip" onclick="App.quickAction('sample1')">试用示例数据</button>
+                            <button class="chip" onclick="App.quickAction('upload')">上传PDF</button>
+                        </div>
+                        <p class="hint-text">或者直接将年报文本粘贴到输入框中发送给我。</p>
+                    `);
+                    break;
+                default:
+                    UI.addAgentMessage(`
+                        <p>我主要擅长企业年报数据提取。你可以：</p>
+                        <div class="action-chips">
+                            <button class="chip" onclick="App.quickAction('sample1')">试用示例：万科年报</button>
+                            <button class="chip" onclick="App.quickAction('upload')">上传PDF年报</button>
+                            <button class="chip" onclick="App.quickAction('paste')">粘贴年报文本</button>
+                        </div>
+                    `);
+            }
+        } catch (err) {
+            UI.removeTypingIndicator(typing);
+            UI.addAgentMessage(`<p style="color:var(--danger)">处理出错：${err.message}</p>`);
+        }
+    },
+
+    async _processText(text, displayName, apiKey) {
+        if (this.isProcessing) return;
+        this.isProcessing = true;
+
+        if (!apiKey) apiKey = document.getElementById('apiKey').value.trim();
+        const model = document.getElementById('modelSelect').value;
+
+        if (!apiKey) {
+            UI.addAgentMessage('<p style="color:var(--warning)">请先配置 API Key。</p>');
+            this.isProcessing = false;
+            return;
+        }
+
+        if (!displayName) {
+            const preview = text.length > 100 ? text.substring(0, 100) + '...' : text;
+            UI.addUserMessage(preview);
+            UI.clearInput();
+        }
+
+        // 创建工作流卡片
+        const workflowMsg = UI.createWorkflowCard();
+
+        try {
             const result = await Workflow.run({
                 text,
                 apiKey,
                 model,
                 callbacks: {
                     onStepStart: (step) => {
-                        const names = {
-                            preprocess: '文档预处理',
-                            balance: '资产负债表提取',
-                            management: '管理层变动提取',
-                            notes: '附注信息提取'
-                        };
-                        UI.setStepStatus(step, 'active');
-                        UI.appendStream(`\n${'='.repeat(50)}\n`);
-                        UI.appendStream(`[步骤] ${names[step]} 开始...\n\n`);
+                        UI.updateWorkflowStep(workflowMsg, step, 'active');
+                        const names = { preprocess: '文档预处理', balance: '资产负债表', management: '管理层变动', notes: '附注信息' };
+                        UI.updateWorkflowStatus(workflowMsg, `正在执行：${names[step]}`);
+                        UI.appendStream(workflowMsg, `\n── ${names[step]} ──\n`);
                     },
-                    onStepDone: (step, data) => {
-                        UI.setStepStatus(step, 'done');
-                        UI.appendStream(`\n[完成] ${step} 提取成功\n`);
+                    onStepDone: (step) => {
+                        UI.updateWorkflowStep(workflowMsg, step, 'done');
+                        UI.appendStream(workflowMsg, `\n✓ 完成\n`);
                     },
-                    onStepError: (step, error) => {
-                        UI.setStepStatus(step, 'error', error.message);
+                    onStepError: (step, err) => {
+                        UI.updateWorkflowStep(workflowMsg, step, 'error');
+                        UI.appendStream(workflowMsg, `\n✗ 错误: ${err.message}\n`);
                     },
                     onStreamToken: (step, token) => {
-                        UI.appendStream(token);
+                        UI.appendStream(workflowMsg, token);
                     },
                     onAllDone: (finalResult) => {
-                        this._renderResults(finalResult);
+                        this.lastResult = finalResult;
+                        UI.updateWorkflowStatus(workflowMsg, '全部完成');
+
+                        // 生成结果摘要
+                        const overview = Workflow.getOverview(finalResult);
+                        UI.addAgentMessage(`
+                            <p>提取完成！以下是分析结果摘要：</p>
+                            <p><strong>公司：</strong>${overview.company}　<strong>年份：</strong>${overview.year}</p>
+                            <p><strong>总资产：</strong>${Workflow.formatNumber(overview.totalAssets)}　<strong>总负债：</strong>${Workflow.formatNumber(overview.totalLiabilities)}　<strong>净资产：</strong>${Workflow.formatNumber(overview.totalEquity)}</p>
+                        `);
+
+                        // 渲染详细结果卡片
+                        UI.createResultCard(finalResult);
                     }
                 }
             });
-
-        } catch (error) {
-            UI.appendStream(`\n[错误] ${error.message}\n`);
-            console.error('Workflow error:', error);
+        } catch (err) {
+            UI.addAgentMessage(`<p style="color:var(--danger)">处理出错：${err.message}</p>`);
         } finally {
-            document.getElementById('startBtn').style.display = 'inline-flex';
-            document.getElementById('stopBtn').style.display = 'none';
+            this.isProcessing = false;
         }
     },
 
-    /**
-     * 停止工作流
-     */
-    stop() {
-        Workflow.stop();
-        UI.appendStream('\n[系统] 已停止\n');
-        document.getElementById('startBtn').style.display = 'inline-flex';
-        document.getElementById('stopBtn').style.display = 'none';
-    },
+    // ========== 导出功能 ==========
 
-    /**
-     * 渲染结果
-     */
-    _renderResults(result) {
-        UI.showPanel('resultPanel');
-
-        const overview = Workflow.getOverview(result);
-        UI.renderOverview(overview);
-
-        const balanceRows = Workflow.getBalanceSheetRows(result);
-        UI.renderBalanceSheet(balanceRows);
-
-        UI.renderManagement(result.management_changes || []);
-        UI.renderNotes(result.notes || {});
-        UI.renderJSON(result);
-
-        // 滚动到结果
-        document.getElementById('resultPanel').scrollIntoView({ behavior: 'smooth' });
-    },
-
-    /**
-     * 加载示例数据
-     */
-    loadSample(id) {
-        const sample = SampleData[id];
-        if (!sample) return;
-
-        document.getElementById('textInput').value = sample;
-        // 切换到粘贴文本tab
-        document.querySelectorAll('.tab-bar .tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        document.querySelector('.tab[data-tab="paste"]').classList.add('active');
-        document.getElementById('tab-paste').classList.add('active');
-        UI._updateStartBtn();
-    },
-
-    /**
-     * 复制JSON
-     */
     copyJSON() {
-        const text = document.getElementById('jsonOutput').textContent;
+        if (!this.lastResult) return;
+        const text = JSON.stringify(this.lastResult, null, 2);
         navigator.clipboard.writeText(text).then(() => {
-            const btn = document.getElementById('copyJsonBtn');
-            btn.textContent = '已复制!';
-            setTimeout(() => btn.textContent = '复制JSON', 1500);
+            UI.addAgentMessage('<p style="color:var(--success)">JSON已复制到剪贴板 ✓</p>');
         });
     },
 
-    /**
-     * 下载JSON
-     */
     downloadJSON() {
-        const text = document.getElementById('jsonOutput').textContent;
+        if (!this.lastResult) return;
+        const text = JSON.stringify(this.lastResult, null, 2);
         const blob = new Blob([text], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `年报提取结果_${new Date().toISOString().slice(0, 10)}.json`;
+        a.download = `年报提取_${new Date().toISOString().slice(0, 10)}.json`;
         a.click();
         URL.revokeObjectURL(url);
     },
 
-    /**
-     * 下载CSV
-     */
     downloadCSV() {
-        const result = Workflow.results;
-        let csv = '﻿'; // BOM for Excel
-
-        // 资产负债表CSV
-        csv += '科目,期末余额,期初余额\n';
-        const rows = Workflow.getBalanceSheetRows(Workflow._mergeResults());
+        if (!this.lastResult) return;
+        let csv = '﻿科目,期末余额,期初余额\n';
+        const rows = Workflow.getBalanceSheetRows(this.lastResult);
         for (const row of rows) {
             if (row.isSection) {
                 csv += `\n${row.label},,\n`;
@@ -227,7 +269,6 @@ const App = {
                 csv += `"${row.item || row.label}",${row.ending ?? row.ending_balance ?? ''},${row.beginning ?? row.beginning_balance ?? ''}\n`;
             }
         }
-
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -384,5 +425,4 @@ const SampleData = {
 报告期内，公司对无形资产摊销年限进行了重新评估，将部分软件摊销年限由3年调整为5年。`
 };
 
-// 启动应用
 document.addEventListener('DOMContentLoaded', () => App.init());
